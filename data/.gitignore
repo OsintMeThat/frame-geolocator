@@ -1,0 +1,8 @@
+# Ignore all heavy / sensitive media, but keep the folder structure and metadata.
+videos/*
+frames/*
+!.gitkeep
+
+# Always keep the ground-truth metadata and docs (override the rules above).
+!README.md
+!manifest.csv

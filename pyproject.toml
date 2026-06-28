@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "frame-geolocator"
+version = "0.0.1"
+description = "Agentic OSINT geolocation of images and videos via a catalogue of small, testable tools."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.24",
+    "opencv-python>=4.8",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.5",
+]
+# OCR backends (heavy: pulls torch via easyocr). Tesseract also needs the system
+# package `tesseract-ocr` (+ language data, e.g. tesseract-ocr-fra).
+ocr = [
+    "easyocr>=1.7",
+    "pytesseract>=0.3.10",
+]
+# Audio branch. imageio-ffmpeg bundles a static ffmpeg binary (no system dependency);
+# faster-whisper provides local ASR + spoken-language ID.
+audio = [
+    "imageio-ffmpeg>=0.4.9",
+    "faster-whisper>=1.0",
+]
+# Sound-event classification (gunshot/siren/explosion…) via PANNs on PyTorch.
+# Downloads a ~300 MB AudioSet checkpoint on first use.
+sound = [
+    "panns-inference>=0.1.1",
+    "librosa>=0.10",
+]
+
+[project.scripts]
+decompose-video = "frame_geolocator.tools.decompose_video:main"
+read-text-ocr = "frame_geolocator.tools.read_text_ocr:main"
+extract-audio = "frame_geolocator.tools.extract_audio:main"
+identify-spoken-language = "frame_geolocator.tools.identify_spoken_language:main"
+flash-to-bang-range = "frame_geolocator.tools.flash_to_bang_range:main"
+classify-audio-events = "frame_geolocator.tools.classify_audio_events:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

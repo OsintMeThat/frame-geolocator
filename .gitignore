@@ -1,0 +1,62 @@
+# Claude Code
+.claude/
+CLAUDE.md
+
+# Secrets & environnement
+*.code-workspace
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+credentials/
+config/secrets.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+dist/
+build/
+*.egg-info/
+.eggs/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+*.log
+
+# Node
+node_modules/
+.npm/
+dist/
+.next/
+.nuxt/
+.cache/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Local outputs / generated data
+output/
+results/
+data/raw/
+data/videos/
+data/frames/
+*.sqlite
+*.db
