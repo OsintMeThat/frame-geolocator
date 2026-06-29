@@ -344,6 +344,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Disable CLAHE brightness normalization.")
     parser.add_argument("--no-contact-sheet", action="store_true",
                         help="Do not write a contact sheet.")
+    parser.add_argument("--case-file", metavar="PATH",
+                        help="Shared case file to merge this result into.")
     args = parser.parse_args(argv)
 
     config = DecomposeConfig(
@@ -359,6 +361,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     if result.contact_sheet_path:
         print(f"Contact sheet: {result.contact_sheet_path}")
+    if args.case_file:
+        from frame_geolocator.case_file import merge
+        merge(args.case_file, "decompose_video", result)
+        print(f"Case file: {args.case_file}")
     return 0
 
 

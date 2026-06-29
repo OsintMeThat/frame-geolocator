@@ -406,6 +406,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Speed of sound (m/s).")
     parser.add_argument("--max-distance", type=float, default=5000.0)
     parser.add_argument("--json", help="Optional path to write the full result as JSON.")
+    parser.add_argument("--case-file", metavar="PATH",
+                        help="Shared case file to merge this result into.")
     args = parser.parse_args(argv)
 
     config = FlashToBangConfig(speed_of_sound_mps=args.speed, max_distance_m=args.max_distance)
@@ -426,6 +428,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         result.to_json(args.json)
         print(f"Wrote {args.json}")
+    if args.case_file:
+        from frame_geolocator.case_file import merge
+        merge(args.case_file, "flash_to_bang_range", result)
+        print(f"Case file: {args.case_file}")
     return 0
 
 

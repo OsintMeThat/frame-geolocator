@@ -190,6 +190,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--threshold", type=float, default=0.2)
     parser.add_argument("--json", help="Optional path to write the full result as JSON.")
+    parser.add_argument("--case-file", metavar="PATH",
+                        help="Shared case file to merge this result into.")
     args = parser.parse_args(argv)
 
     config = ClassifyAudioConfig(top_k=args.top_k, event_threshold=args.threshold)
@@ -209,6 +211,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         result.to_json(args.json)
         print(f"Wrote {args.json}")
+    if args.case_file:
+        from frame_geolocator.case_file import merge
+        merge(args.case_file, "classify_audio_events", result)
+        print(f"Case file: {args.case_file}")
     return 0
 
 

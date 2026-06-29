@@ -156,6 +156,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-transcribe", action="store_true",
                         help="Only detect the language, do not transcribe.")
     parser.add_argument("--json", help="Optional path to write the full result as JSON.")
+    parser.add_argument("--case-file", metavar="PATH",
+                        help="Shared case file to merge this result into.")
     args = parser.parse_args(argv)
 
     config = SpokenLanguageConfig(model_size=args.model, transcribe=not args.no_transcribe)
@@ -168,6 +170,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         result.to_json(args.json)
         print(f"Wrote {args.json}")
+    if args.case_file:
+        from frame_geolocator.case_file import merge
+        merge(args.case_file, "identify_spoken_language", result)
+        print(f"Case file: {args.case_file}")
     return 0
 
 

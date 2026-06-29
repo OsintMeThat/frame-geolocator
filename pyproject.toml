@@ -24,6 +24,12 @@ ocr = [
     "easyocr>=1.7",
     "pytesseract>=0.3.10",
 ]
+# NLP tools for parse_context_note: language detection + optional NER.
+# After installing spacy, also run: python -m spacy download xx_ent_wiki_sm
+nlp = [
+    "langdetect>=1.0.9",
+    "spacy>=3.7",
+]
 # Audio branch. imageio-ffmpeg bundles a static ffmpeg binary (no system dependency);
 # faster-whisper provides local ASR + spoken-language ID.
 audio = [
@@ -36,6 +42,11 @@ sound = [
     "panns-inference>=0.1.1",
     "librosa>=0.10",
 ]
+# Zero-shot scene understanding for classify_scene_cues (OpenCLIP on PyTorch).
+# Downloads a ~600 MB CLIP checkpoint on first use.
+vision = [
+    "open_clip_torch>=2.20",
+]
 
 [project.scripts]
 decompose-video = "frame_geolocator.tools.decompose_video:main"
@@ -44,6 +55,10 @@ extract-audio = "frame_geolocator.tools.extract_audio:main"
 identify-spoken-language = "frame_geolocator.tools.identify_spoken_language:main"
 flash-to-bang-range = "frame_geolocator.tools.flash_to_bang_range:main"
 classify-audio-events = "frame_geolocator.tools.classify_audio_events:main"
+parse-context-note = "frame_geolocator.tools.parse_context_note:main"
+classify-scene-cues = "frame_geolocator.tools.classify_scene_cues:main"
+restrict-candidate-region = "frame_geolocator.tools.restrict_candidate_region:main"
+extract-skyline-profile = "frame_geolocator.tools.extract_skyline_profile:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

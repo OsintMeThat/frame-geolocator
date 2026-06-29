@@ -133,6 +133,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", help="Output WAV path (default: alongside the video).")
     parser.add_argument("--sample-rate", type=int, default=DEFAULT_SAMPLE_RATE)
     parser.add_argument("--channels", type=int, default=1)
+    parser.add_argument("--case-file", metavar="PATH",
+                        help="Shared case file to merge this result into.")
     args = parser.parse_args(argv)
 
     result = extract_audio(
@@ -143,6 +145,10 @@ def main(argv: list[str] | None = None) -> int:
               f"({result.duration_s:.1f}s, {result.sample_rate}Hz, {result.channels}ch)")
     else:
         print("No audio stream in this video.")
+    if args.case_file:
+        from frame_geolocator.case_file import merge
+        merge(args.case_file, "extract_audio", result)
+        print(f"Case file: {args.case_file}")
     return 0
 
 

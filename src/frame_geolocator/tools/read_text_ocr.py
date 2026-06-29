@@ -293,6 +293,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--min-confidence", type=float, default=0.3)
     parser.add_argument("--no-preprocess", action="store_true")
     parser.add_argument("--json", help="Optional path to write the full result as JSON.")
+    parser.add_argument("--case-file", metavar="PATH",
+                        help="Shared case file to merge this result into.")
     args = parser.parse_args(argv)
 
     config = OCRConfig(
@@ -308,6 +310,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         result.to_json(args.json)
         print(f"Wrote {args.json}")
+    if args.case_file:
+        from frame_geolocator.case_file import merge
+        merge(args.case_file, "read_text_ocr", result)
+        print(f"Case file: {args.case_file}")
     return 0
 
 
