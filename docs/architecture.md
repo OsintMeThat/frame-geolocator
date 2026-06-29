@@ -8,37 +8,55 @@
 
 ## 1. Design philosophy
 
-### The intelligence is in the tools, not in the prompt
+### The system is an agentic reasoning loop
 
-The central bet of this project: **an LLM cannot geolocate a frame, but it can
-brilliantly orchestrate and interpret tools that can.**
+The central bet of this project: **an LLM agent orchestrates and interprets tools; the
+tools provide rich, structured inputs; together they reproduce a human analyst's reasoning.**
 
-A multimodal LLM is excellent at:
+A multimodal LLM agent is excellent at:
 - describing a scene, reading signs, recognizing architectural/biome cues,
-- forming and prioritizing hypotheses,
-- deciding *which tool to call next* and *what the numeric output means*.
+- forming and prioritizing hypotheses from conflicting evidence,
+- deciding *which tool to call next*, *which result to trust*, and *how to reconcile
+  conflicts* — reasoning that a hand-coded rule engine cannot do honestly.
+- understanding nuance: a large region with low confidence is more honest than a confident
+  wrong point.
 
-A multimodal LLM is **bad** at:
+Tools are **not** trying to be smart. Each is deterministic, independently-testable, and
+focuses on one numeric or extraction task:
 - matching a ridge silhouette against the planet's terrain,
 - computing elevation profiles, viewsheds, camera angles, distances,
-- remembering exact geography (it hallucinates coordinates).
+- extracting text, language cues, and architectural signatures from media.
 
-Therefore: **deterministic, independently-testable numeric tools do the hard work.**
 The LLM is the analyst's brain; the tools are the analyst's instruments (GIS, ruler,
-satellite imagery, Street View, protractor). We aim for **~20 small, robust tools**
-rather than one monolithic agent.
+satellite imagery, Street View, protractor). **The tools emit facts; the agent makes
+sense of them.** We aim for **~20 small, robust tools** rather than monolithic hand-coded
+logic, because the agent can reason over many structured signals in ways that no rule
+engine can replicate.
 
-### Search vs. verification
+### Search vs. verification: the agent's job
 
 The hardest version of the problem — "locate this media anywhere on Earth" — is a
 continuous planetary search and is not the MVP. The tractable core is:
 
-> **Given a media + a restricted candidate region, rank hypotheses and return the
-> best position with a confidence score.**
+> **Given a media + context, the agent uses tools to restrict the candidate region
+> intelligently, then ranks hypotheses and returns the best position with a calibrated
+> confidence score.**
 
-Region restriction (from language, biome, architecture, or a manual hint) turns an
-intractable *search* into a tractable *ranking/verification* problem. We automate the
-restriction step progressively, after the verification core works.
+The restriction step is **not** a mechanical filter; it is where the agent does its best
+work. Tools provide rich inputs:
+- caption toponyms + language (parsed by `parse_context_note`)
+- visual cues: architecture, biome, script, sun angle (`classify_scene_cues`, etc.)
+- terrain signatures: skyline, field morphology (`extract_skyline_profile`, etc.)
+
+The agent reconciles these signals intelligently:
+- *Do the caption and visual evidence agree?* If not, how do we resolve it?
+- *Is the biome classification reliable* (not just a night-shot hallucination)?
+- *What's the confidence* in each input?
+- *What's the honest size of the region?* A large area with low confidence beats a
+  confident wrong point.
+
+Rather than a rigid rule, restriction is an **honest, auditable reasoning process** that
+the agent traces for the user. This is where the system avoids black-box behavior.
 
 ---
 
@@ -109,6 +127,32 @@ Every stage emits structured evidence into a shared **case file** (the audit log
 the final answer is fully traceable: *why* these coordinates, *which* tools, *what*
 confidence.
 
+### Case file — the shared evidence accumulator
+
+Each media gets a single `case.json` that every tool can write into via the
+`--case-file PATH` flag.  The file is a flat JSON object keyed by tool name:
+
+```json
+{
+  "decompose_video":        { "frame_count": 746, "selected": [...], … },
+  "parse_context_note":     { "language": "fr", "toponyms": [...], … },
+  "read_text_ocr":          { "engine_used": "easyocr", "detections": [...], … },
+  "classify_scene_cues":    { "groups": [{"group": "biome", "reliable": false, …}], … },
+  "identify_spoken_language": { "language": "es", "transcription": "…", … },
+  "classify_audio_events":  { "clip_tags": [...], "events": [...], … },
+  "restrict_candidate_region": { "candidates": [...], "confidence": 0.55, "conflicts": [] }
+}
+```
+
+Rules:
+- **Each tool merges its own key only** — it never touches other keys.
+- Re-running a tool overwrites its own entry; earlier entries are untouched.
+- The file is created on first write; the directory must already exist.
+
+The utility lives in `frame_geolocator.case_file.merge(path, tool_name, result)`.
+The orchestrator reads the accumulated case file to decide which tool to call next
+and to build the final reasoning trace.
+
 ### Context input — the accompanying note (first-class)
 
 The caption/description that ships with a media is a primary input, not an afterthought.
@@ -155,23 +199,49 @@ ground-truth benchmark. `[LLM]` = vision/LLM-backed, `[NUM]` = deterministic num
    text → strong region prior.
 8. **`classify_architecture`** `[LLM]` — regional building style, roof type, materials.
 9. **`classify_biome_vegetation`** `[LLM/NUM]` — climate/vegetation/land-cover cues.
+   *Implemented as `classify_scene_cues`* (OpenCLIP zero-shot), which also returns
+   `setting` and `time_of_day` cues. Crucially it **gates biome on frame luminance**:
+   on dark night footage the biome group is returned `reliable: false` instead of a
+   confident wrong answer — the media-only prior for caption-less, text-less scenes.
 10. **`estimate_sun_shadow`** `[NUM]` — sun azimuth/elevation from shadows → latitude
     band & time-of-day constraints.
 11. **`estimate_scale_reference`** `[NUM/LLM]` — use known sizes (human ~1.7 m, car,
     door, lane width) to calibrate distances in-frame.
 
 ### C. Region restriction tools
-12. **`parse_context_note`** `[NUM/LLM]` — extract toponyms (NER + GeoNames gazetteer),
-    caption language, event type and timestamp from the **accompanying note**. Produces a
-    strong region prior **to be verified, never taken as the answer** (see §7 leakage).
-13. **`restrict_candidate_region`** `[NUM]` — fuse context-note toponyms + language +
-    biome + architecture + sun-latitude into a candidate bounding region / set of regions.
+12. **`parse_context_note`** `[NUM/LLM]` *(implemented)* — extract toponyms (NER +
+    Nominatim geocoding), caption language, event type and timestamp from the
+    **accompanying note**. Produces a strong region prior **to be verified, never taken as
+    the answer** (see §7 leakage). The model NER is supplemented with high-precision,
+    case-robust patterns (hashtags + ALL-CAPS) so an uppercase toponym such as "LA GUAIRA"
+    that spaCy misses is still recovered. *Remaining limitation:* demonyms
+    ("marseillaise" → Marseille) are not resolved; such a caption yields no or wrong toponym,
+    which `restrict_candidate_region` flags as a conflict for the visual stage to settle.
+13. **`restrict_candidate_region`** `[NUM]` *(implemented)* — emit **raw signals** for region
+    restriction: all detected toponyms (geocoded or not), the language region(s), and the
+    biome region(s). Zero fusion logic, zero judgment. Metadata on each signal:
+    
+    - Each toponym: lat/lon (if geocoded), feature type (city/country/peak), radius, and
+      cross-checks: `within_language_region` (bool), `within_biome_region` (bool).
+    - Language signal: the detected language and its geographic region(s).
+    - Biome signal: the detected biome and its climate-zone region(s), plus a `reliable`
+      flag (false if biome came from a night frame where it's unreliable).
+    
+    The agent (Claude) reads these signals and reasons: *Which toponym should I trust?
+    Does the caption toponym conflict with visual evidence?* If the caption says Beirut
+    but the biome is Arctic, the agent sees this conflict and can adjust. **Honest
+    degradation** is the agent's job: it reports weak evidence as a large region with low
+    confidence, never as a confident wrong point. Granularity: city radius → country →
+    language family → climate zone. Architecture/sun-latitude cues are future signal sources.
 14. **`enumerate_search_cells`** `[NUM]` — tile a candidate region into searchable
     cells with priority ordering.
 
 ### D. Terrain / topographic tools — the hard numeric core
-15. **`extract_skyline_profile`** `[NUM]` — segment horizon/ridge silhouette from the
-    media → angular elevation profile (the "two bumps on a ridge" signature).
+15. **`extract_skyline_profile`** `[NUM]` *(implemented)* — segment horizon/ridge
+    silhouette from the media → per-column boundary profile (normalized, or elevation
+    degrees with a FOV). Adaptive sky/ground segmentation (no model); reports a `coverage`
+    flag so sky-less/down-looking frames are marked unusable instead of fabricating a
+    horizon. Optional overlay image for visual audit. The "two bumps on a ridge" signature.
 16. **`query_dem`** `[NUM/API]` — fetch elevation (SRTM / Copernicus 30 m) for points
     or tiles.
 17. **`synthesize_skyline`** `[NUM]` — from a DEM and a hypothesized viewpoint+heading,
@@ -224,18 +294,28 @@ A media's soundtrack carries independent geolocation evidence. All local & free.
 
 ---
 
-## 5. Agents (MVP: 3 max)
+## 5. Agents & orchestration
 
-The brief caps the MVP at three agents. Each agent is a thin orchestration loop over a
-subset of the tool catalogue:
+The system is driven by a **primary orchestrator** (Claude via MCP, or a local LLM
+later) that reasons over the tool catalogue. For MVP, the orchestrator calls tools
+from five roles:
 
-| Agent | Owns tools | Responsibility |
-|-------|-----------|----------------|
-| **Extraction & topographic** | A, B, D (14–18) | Turn the media into structured cues + a skyline/terrain signature. |
-| **Geospatial matching** | C, E | Restrict the region, fetch DEM/satellite/OSM, produce ranked candidate positions. |
-| **Geometric fusion** | F | Apply geometry, fuse evidence, output coordinates + confidence + reasoning trace. |
+| Role | Tools | Responsibility |
+|------|-------|----------------|
+| **Media extraction** | A, B | Decode the media into frames/audio; segment intelligible segments; assess quality. |
+| **Scene understanding** | D (14–18), part of B | Extract skyline, terrain morphology, architectural/biome cues. |
+| **Region restriction** | C (12–13) | Parse the caption for toponyms/language; emit candidate regions + conflict flags. |
+| **Geospatial search & verify** | E, part of F | Fetch DEM/satellite/OSM; match terrain; verify hypotheses at candidate points. |
+| **Geometric fusion & ranking** | F (25–27) | Apply camera geometry, triangulate, rank all hypotheses, output coordinates + confidence. |
 
-A single **orchestrator** sequences the three agents and maintains the case file.
+The orchestrator (Claude) is the analyst. It:
+- Decides which tool to call next based on accumulated evidence
+- Interprets tool results, flags conflicts, and adjusts strategy
+- Reasons over region-restriction inputs and chooses candidate regions intelligently
+- Fuses evidence to rank hypotheses and output a calibrated confidence score
+- Traces its reasoning for auditability
+
+The tools emit facts and structured signals; the orchestrator makes sense of them.
 
 ---
 
